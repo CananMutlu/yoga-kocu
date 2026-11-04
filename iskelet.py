@@ -5,6 +5,7 @@ from mediapipe.tasks.python import BaseOptions, vision
 
 KAYNAK = 0  # 0: bilgisayarın kamerası. Video denemek için: "video.mp4"
 MODEL = "pose_landmarker_lite.task"
+YUZU_BULANIKLASTIR = True  # False yaparsanız yüz bulanıklaşmaz
 
 # Üç noktanın ortasındaki (b) açıyı derece olarak hesaplar.
 def aci(a, b, c):
@@ -38,6 +39,18 @@ with vision.PoseLandmarker.create_from_options(ayarlar) as model:
             yukseklik, genislik = kare.shape[:2]
             # Noktaları piksele çeviriyoruz; açı ancak böyle doğru çıkar.
             noktalar = [(n.x * genislik, n.y * yukseklik) for n in sonuc.pose_landmarks[0]]
+
+            # Yüz bulanıklaştırma: 0-10 numaralı noktalar yüzdür
+            if YUZU_BULANIKLASTIR:
+                xs = [p[0] for p in noktalar[:11]]
+                ys = [p[1] for p in noktalar[:11]]
+                pay = 0.6 * (max(xs) - min(xs))  # kutuyu yüzün çevresine doğru genişlet
+                x1 = max(int(min(xs) - pay), 0)
+                x2 = min(int(max(xs) + pay), genislik)
+                y1 = max(int(min(ys) - pay), 0)
+                y2 = min(int(max(ys) + pay), yukseklik)
+                if x2 > x1 and y2 > y1:
+                    kare[y1:y2, x1:x2] = cv2.GaussianBlur(kare[y1:y2, x1:x2], (99, 99), 30)
 
             # Çizgiler: 11 numaradan küçük noktalar yüzdür, onları çizmiyoruz.
             for b in baglantilar:
