@@ -2,7 +2,8 @@
 
 Sabit birim (bilgisayar) ile giyilebilir birim (Beam Pro) arasindaki tek
 haberlesme noktasi:
-  GET /video          -> egitim videosu (ileri/geri sarma icin Range destekli)
+  GET /               -> istemci sayfasi (istemci/index.html, SCRUM-18)
+  GET /video         -> egitim videosu (ileri/geri sarma icin Range destekli)
   GET /durum?t=34.5   -> istemci oynatma anini bildirir, son kocluk durumu JSON
 
 Canli kamera goruntusu bu sunucudan ASLA gonderilmez; agda yalnizca egitim
@@ -22,7 +23,9 @@ import time
 
 from flask import Flask, abort, jsonify, request, send_file
 
-VIDEO_YOLU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "videolar", "egitim.mp4")
+PROJE_KLASORU = os.path.dirname(os.path.abspath(__file__))
+VIDEO_YOLU = os.path.join(PROJE_KLASORU, "videolar", "egitim.mp4")
+ISTEMCI_YOLU = os.path.join(PROJE_KLASORU, "istemci", "index.html")  # SCRUM-18
 PORT = 5000
 
 # Rapordaki (C.2-iii) yanit bicimi. Alan adlari degismemeli; istemciler buna bagli.
@@ -85,6 +88,15 @@ app.json.ensure_ascii = False  # Turkce karakterler ş yerine oldugu gibi gitsin
 app.json.sort_keys = False     # alanlar rapordaki sirayla gitsin
 
 
+@app.get("/")
+def istemci():
+    """Beam Pro / telefon tarayicisinda acilan istemci sayfasi (SCRUM-18 / T8).
+    Sayfa ayni sunucudan geldigi icin /video ve /durum isteklerinde CORS gerekmez."""
+    if not os.path.isfile(ISTEMCI_YOLU):
+        abort(404, description=f"Istemci sayfasi bulunamadi: {ISTEMCI_YOLU}")
+    return send_file(ISTEMCI_YOLU, mimetype="text/html")
+
+
 @app.get("/video")
 def video():
     if not os.path.isfile(VIDEO_YOLU):
@@ -135,6 +147,7 @@ if __name__ == "__main__":
         durum_guncelle(**ORNEK_DURUM)
 
     ip = yerel_ip()
+    print(f"Istemci: http://{ip}:{secenek.port}/")
     print(f"Video : http://{ip}:{secenek.port}/video")
     print(f"Durum : http://{ip}:{secenek.port}/durum?t=34.5")
     # 0.0.0.0: ayni Wi-Fi'daki telefon / Beam Pro da baglanabilsin
