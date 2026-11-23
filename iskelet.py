@@ -1,23 +1,14 @@
 
-import math
 import time
 import cv2
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions, vision
 
+from acilar import AciYumusatici, hesapla_acilar
+
 KAYNAK = 0  # 0: bilgisayarin kamerasi
 MODEL = "pose_landmarker_lite.task"
 YUZU_BULANIKLASTIR = True
-
-# Uc noktanin ortasindaki aciyi derece olarak hesaplar.
-def aci(a, b, c):
-    derece = math.degrees(
-        math.atan2(c[1] - b[1], c[0] - b[0])
-        - math.atan2(a[1] - b[1], a[0] - b[0])
-    )
-    derece = abs(derece)
-    return 360 - derece if derece > 180 else derece
-
 
 ayarlar = vision.PoseLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL),
@@ -28,6 +19,7 @@ baglantilar = vision.PoseLandmarksConnections.POSE_LANDMARKS
 
 kamera = cv2.VideoCapture(KAYNAK)
 kare_no = 0
+yumusatici = AciYumusatici()  # son 10 karenin ortalamasi
 
 # FPS olcum degiskenleri
 baslangic_zamani = time.perf_counter()
@@ -134,17 +126,22 @@ with vision.PoseLandmarker.create_from_options(ayarlar) as model:
                         -1
                     )
 
-            # Diz acilari: kalca - diz - ayak bilegi
-            sol_diz = aci(noktalar[23], noktalar[25], noktalar[27])
-            sag_diz = aci(noktalar[24], noktalar[26], noktalar[28])
+            # Tum acilar acilar.py'de tanimli (diz, dirsek, omuz, kalca)
+            gorunurluk = [n.visibility for n in sonuc.pose_landmarks[0]]
+            acilar = yumusatici.ekle(hesapla_acilar(noktalar, gorunurluk))
 
-            # Dirsek acilari: omuz - dirsek - bilek
-            sol_dirsek = aci(noktalar[11], noktalar[13], noktalar[15])
-            sag_dirsek = aci(noktalar[12], noktalar[14], noktalar[16])
+            def goster(ad):
+                return "-" if acilar[ad] is None else f"{acilar[ad]:.0f}"
+
+            sol_diz = goster("sol_diz")
+            sag_diz = goster("sag_diz")
+            sol_dirsek = goster("sol_dirsek")
+            sag_dirsek = goster("sag_dirsek")
+            govde = goster("govde_dikligi")
 
             cv2.putText(
                 kare,
-                f"Sol diz: {sol_diz:.0f}  Sag diz: {sag_diz:.0f}",
+                f"Sol diz: {sol_diz}  Sag diz: {sag_diz}  Govde: {govde}",
                 (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
@@ -154,7 +151,7 @@ with vision.PoseLandmarker.create_from_options(ayarlar) as model:
 
             cv2.putText(
                 kare,
-                f"Sol dirsek: {sol_dirsek:.0f}  Sag dirsek: {sag_dirsek:.0f}",
+                f"Sol dirsek: {sol_dirsek}  Sag dirsek: {sag_dirsek}",
                 (20, 80),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
