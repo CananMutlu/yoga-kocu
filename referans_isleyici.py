@@ -22,7 +22,8 @@ MODEL = "pose_landmarker_lite.task"
 ISLEME_GENISLIGI = 960   # 4K kareler modele verilmeden once bu genislige kucultulur
 MIN_SURE_SN = 2.0        # bundan kisa video "cok kisa" sayilir
 MIN_KISI_ORANI = 0.5     # karelerin en az bu kadarinda kisi gorunmeli
-COK_KISI_ORANI = 0.1     # karelerin bundan fazlasinda 2+ kisi varsa uyar
+COK_KISI_ORANI = 0.1     # kontrol edilen karelerin bundan fazlasinda 2+ kisi varsa uyar
+KISI_KONTROL_ARALIGI = 12  # "birden cok kisi" kontrolu her N. karede yapilir
 
 
 def acilari_cikar(video_yolu, ilerleme=None):
@@ -39,17 +40,26 @@ def acilari_cikar(video_yolu, ilerleme=None):
     if toplam / fps < MIN_SURE_SN:
         raise ReferansHatasi("Video cok kisa; poz ayrilamaz.")
 
+    # Acilar CANLI HATLA AYNI ayarla (num_poses=1) cikarilir. num_poses degisince
+    # takip degisip ayni videoda 10+ derece farkli aci cikabiliyor (olculdu).
     ayarlar = vision.PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=MODEL),
         running_mode=vision.RunningMode.VIDEO,
-        num_poses=2,  # 2. kisiyi fark edebilmek icin
+    )
+    # "Birden cok kisi" kontrolu ayri ve seyrek bir gecisle yapilir (acilara karismaz).
+    kontrol_ayarlari = vision.PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=MODEL),
+        running_mode=vision.RunningMode.VIDEO,
+        num_poses=2,
     )
     yumusatici = AciYumusatici()
     kareler = []
     kisi_olan = 0
+    kontrol_kare = 0
     cok_kisi_olan = 0
 
-    with vision.PoseLandmarker.create_from_options(ayarlar) as model:
+    with vision.PoseLandmarker.create_from_options(ayarlar) as model, \
+            vision.PoseLandmarker.create_from_options(kontrol_ayarlari) as kontrol:
         no = 0
         while True:
             okundu, kare = video.read()
@@ -70,10 +80,13 @@ def acilari_cikar(video_yolu, ilerleme=None):
             t = no / fps
             sonuc = model.detect_for_video(goruntu, int(t * 1000))
 
+            if no % KISI_KONTROL_ARALIGI == 0:
+                kontrol_kare += 1
+                if len(kontrol.detect_for_video(goruntu, int(t * 1000)).pose_landmarks) > 1:
+                    cok_kisi_olan += 1
+
             if sonuc.pose_landmarks:
                 kisi_olan += 1
-                if len(sonuc.pose_landmarks) > 1:
-                    cok_kisi_olan += 1
                 nokta = sonuc.pose_landmarks[0]
                 noktalar = [(n.x * gen, n.y * yuk) for n in nokta]
                 gorunurluk = [n.visibility for n in nokta]
@@ -90,7 +103,7 @@ def acilari_cikar(video_yolu, ilerleme=None):
 
     if not kareler or kisi_olan / len(kareler) < MIN_KISI_ORANI:
         raise ReferansHatasi("Videoda kisi gorunmuyor.")
-    if cok_kisi_olan / len(kareler) > COK_KISI_ORANI:
+    if kontrol_kare and cok_kisi_olan / kontrol_kare > COK_KISI_ORANI:
         raise ReferansHatasi("Videoda birden cok kisi var; tek kisilik video gerekli.")
 
     return kareler, fps
